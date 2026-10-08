@@ -1,0 +1,11 @@
+# 育儿贴图号配置
+# 由 .env 里的 WECHAT_APP_ID / WECHAT_APP_SECRET 覆盖
+
+wechat:
+  app_id: ""
+  app_secret: ""
+
+publish:
+  author: "育儿观察"
+  default_cover: ""
+  default_digest: ""
