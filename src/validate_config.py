@@ -293,10 +293,14 @@ class ConfigValidator:
         self.errors = []
         self.warnings = []
         
-        # 验证各模块配置
+        # 只验证 config.yaml 里真正声明了的模块。育儿贴图号没有 news/llm 段，
+        # 无条件跑 ainews 遗留的校验只会刷「未配置搜索关键词」这类无关警告。
         self.errors.extend(self.validate_wechat_config(config))
-        self.errors.extend(self.validate_llm_config(config))
-        self.errors.extend(self.validate_news_config(config))
+        if any(config.get(s) for s in
+               ("llm", "openai", "openrouter", "deepseek", "zhipu", "siliconflow", "agnes")):
+            self.errors.extend(self.validate_llm_config(config))
+        if config.get("news"):
+            self.errors.extend(self.validate_news_config(config))
         self.errors.extend(self.validate_publish_config(config))
         self.errors.extend(self.validate_scheduler_config(config))
         self.errors.extend(self.validate_environment_variables())

@@ -86,7 +86,8 @@ class HealthChecker:
             check_func: 检查函数，返回HealthCheckResult
         """
         self._checks[name] = check_func
-        logger.info(f"Registered health check: {name}")
+        # 每次 CLI 调用都会刷 4 行注册日志，是内部噪声；文件 handler 仍收 DEBUG
+        logger.debug(f"Registered health check: {name}")
     
     def _check_system(self) -> HealthCheckResult:
         """检查系统信息"""

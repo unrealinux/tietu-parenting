@@ -63,7 +63,7 @@ class WeChatPublisher:
         
         self.app_id = wechat_config.get("app_id", "")
         self.app_secret = wechat_config.get("app_secret", "")
-        self.author = publish_config.get("author", "AI 前沿观察")
+        self.author = publish_config.get("author", "育儿观察")
         self.default_cover = publish_config.get("default_cover", "")
         self.default_digest = publish_config.get("default_digest", "")
         
