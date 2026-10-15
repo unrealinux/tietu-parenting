@@ -47,8 +47,10 @@ POSTS_DIR = os.path.join(ROOT, "posts")
 OUT_DIR = os.path.join(ROOT, "output", "tietu")
 STATE_PATH = os.path.join(OUT_DIR, "_queue.json")
 MEDIA_CACHE_PATH = os.path.join(OUT_DIR, "_media_cache.json")
+COPY_PATH = os.path.join(OUT_DIR, "文案.txt")   # 标题 + 文案汇总，发布时直接抄
 
 TITLE_LIMIT = 64          # 微信硬限制
+TITLE_SOFT = 20           # 自己的排版要求：标题控制在 20 字以内
 CONTENT_WARN = 2000       # 图片消息文案建议上限（SOP：短文案）
 IMAGE_MIN, IMAGE_MAX = 1, 3   # SOP 手册硬规则
 
@@ -89,6 +91,8 @@ def validate(post: dict, allow_many: bool = False) -> tuple[list[str], list[str]
     title = post.get("title", "")
     if len(title) > TITLE_LIMIT:
         errors.append(f"标题 {len(title)} 字 > 微信上限 {TITLE_LIMIT}")
+    elif len(title) > TITLE_SOFT:
+        warnings.append(f"标题 {len(title)} 字 > 自定上限 {TITLE_SOFT}，建议压短")
 
     content = post.get("content", "")
     if len(content) > CONTENT_WARN:
@@ -166,16 +170,19 @@ def cmd_run(args) -> int:
             continue
 
         out_dir = os.path.join(OUT_DIR, slug)
-        if getattr(args, "style", "text") == "anime":
+        style = getattr(args, "style", "text")
+        if style in ("anime", "comic"):
             from make_anime_images import render_anime_cards
-            image_paths = render_anime_cards(post, os.path.join(out_dir, "anime"),
-                                             force=getattr(args, "force", False))
+            image_paths = render_anime_cards(post, os.path.join(out_dir, style),
+                                             force=getattr(args, "force", False), style=style)
         else:
             image_paths = render_cards(post, out_dir)
         print(f"  已出图 {len(image_paths)} 张 → {os.path.relpath(out_dir, ROOT)}")
 
         rec.update({
-            "status": "rendered",
+            # 已建过草稿的条目：重出图不能把状态降级回 rendered，
+            # 否则下次 --commit 的「已建草稿就跳过」失效，会再建一份重复草稿
+            "status": rec.get("status") if rec.get("media_id") else "rendered",
             "file": name,
             "title": post["title"],
             "images": [os.path.relpath(p, ROOT) for p in image_paths],
@@ -211,6 +218,9 @@ def cmd_run(args) -> int:
         save_state(state)
 
     save_state(state)
+    copy_path = write_copy_sheet(files)
+    if copy_path:
+        print(f"文案汇总已刷新 → {os.path.relpath(copy_path, ROOT)}")
     print(f"\n本轮：成功 {ok} · 跳过 {skip} · 失败 {failed}")
     if not args.commit:
         print("未建草稿。确认图片无误后加 --commit 再跑一次。")
@@ -253,6 +263,47 @@ def cmd_sync(args) -> int:
         print("线上有、本地队列没有的草稿（可能是其它流程建的）：")
         for t in unknown:
             print(f"  - {t}")
+    return 0
+
+
+def write_copy_sheet(paths: list[str] | None = None) -> str | None:
+    """把所有贴图的标题 + 文案写进 output/tietu/文案.txt，返回路径。"""
+    paths = paths or discover()
+    if not paths:
+        return None
+
+    lines = ["育儿贴图号 · 标题与文案",
+             f"生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}",
+             f"共 {len(paths)} 条。标题：控制在 {TITLE_SOFT} 字以内。", ""]
+    for path in paths:
+        with open(path, encoding="utf-8") as f:
+            post = json.load(f)
+        slug = post.get("slug", "")
+        base = os.path.join(OUT_DIR, slug)
+        # 有哪些版本就列哪些（纯文字在 <slug>/，搞笑版 comic/，插画版 anime/）
+        variants = [v for v in ("", "comic", "anime") if os.path.isdir(os.path.join(base, v))]
+        title = post["title"]
+        flag = "" if len(title) <= TITLE_SOFT else f"  [超 {TITLE_SOFT} 字：现 {len(title)}]"
+        lines += ["=" * 44,
+                  f"slug：{slug}",
+                  f"标题（{len(title)} 字）{flag}：{title}",
+                  f"文案：{post['content']}",
+                  "图片：" + "   ".join(f"output/tietu/{slug}/{v}".rstrip("/") + "/" for v in variants),
+                  ""]
+
+    os.makedirs(OUT_DIR, exist_ok=True)
+    with open(COPY_PATH, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    return COPY_PATH
+
+
+def cmd_copy(args) -> int:
+    """只汇总标题 + 文案，不出图、不联网。"""
+    p = write_copy_sheet()
+    if not p:
+        print("没找到 posts/tietu_*.json")
+        return 1
+    print(f"已写入 {os.path.relpath(p, ROOT)}")
     return 0
 
 
@@ -423,7 +474,7 @@ def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description="贴图号草稿流水线")
     ap.add_argument("action", nargs="?", default="run",
-                    choices=["run", "status", "list", "prune", "sync", "publish", "perm", "mark"])
+                    choices=["run", "status", "list", "prune", "sync", "publish", "perm", "mark", "copy"])
     ap.add_argument("--status", default="scheduled",
                     help="mark 时写什么状态（scheduled / published / deleted …）")
     ap.add_argument("--at", help="mark 的时间，如 2026-10-02 08:00（默认现在）")
@@ -433,8 +484,8 @@ def main() -> None:
     ap.add_argument("--no-comment", action="store_true", help="关闭留言")
     ap.add_argument("--allow-many", action="store_true",
                     help="允许超过 3 张卡（跳过 SOP 手册校验，渲染仍只取前 3 张）")
-    ap.add_argument("--style", choices=["text", "anime"], default="text",
-                    help="text=纯文字卡（默认）；anime=Agnes 动漫插画底图+叠字")
+    ap.add_argument("--style", choices=["text", "anime", "comic"], default="text",
+                    help="text=纯文字卡（默认）；anime=Agnes 日系插画底图+叠字；comic=简笔画搞笑底图+白底黑字")
     ap.add_argument("--force", action="store_true", help="anime 风格下忽略底图缓存重生成")
     ap.add_argument("--count", type=int, default=20, help="list 拉取条数")
     ap.add_argument("--published", action="store_true", help="list 时改看「已发布」而不是草稿箱")
@@ -443,7 +494,8 @@ def main() -> None:
 
     handlers = {"run": cmd_run, "status": cmd_status, "list": cmd_list,
                 "prune": cmd_prune, "sync": cmd_sync,
-                "publish": cmd_publish, "perm": cmd_perm, "mark": cmd_mark}
+                "publish": cmd_publish, "perm": cmd_perm, "mark": cmd_mark,
+                "copy": cmd_copy}
     sys.exit(handlers[args.action](args))
 
 

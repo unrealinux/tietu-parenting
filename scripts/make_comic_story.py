@@ -22,25 +22,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 
-from make_anime_images import STYLE as _UNUSED  # noqa: F401  仅为保证依赖顺序
-from make_anime_images import _generate_base  # noqa: E402
+from make_anime_images import STYLES, _generate_base  # noqa: E402
 from overlay_text import overlay  # noqa: E402
 
 OUT_ROOT = os.path.join(ROOT, "output", "story")
 
-# 搞笑卡通风格：比贴图卡的插画风更夸张、更亮，适合连续叙事
-STYLE = (
-    "极简手绘贴纸风（简笔画漫画），粗黑线条勾边，纯白背景，"
-    "平涂上色，无阴影、无渐变、无纹理。马卡龙柔和配色（浅绿、粉红、棕色、米白）。"
-    "人物是超简 Q 版：圆头，点状眼睛，小小的一字嘴，脸颊腮红，"
-    "圆滚滚的小手和小短腿，造型可爱好笑。"
-    "道具只用简单几何形状表示（例如被子是一个圆角矩形）。"
-    "固定角色：一个棕发妈妈（珊瑚粉上衣）和一个光头小婴儿（浅绿连体衣），"
-    "同一角色、同一画风贯穿全部画面。"
-    "整张图只画一个场景，不要上下分格、不要左右拼图、不要边框。"
-    "大量留白，主体居中偏上，画面底部留出约四分之一的空白。"
-    "画面中不要出现任何文字、字幕、台词气泡、水印、logo。"
-)
+# 搞笑卡通风格：比贴图卡的插画风更夸张、更亮，适合连续叙事。
+# 定义在 make_anime_images.COMIC_STYLE，两处共用一份，改风格只改那一处。
+STYLE = STYLES["comic"]
 
 COVER_W, COVER_H = 900, 383       # 微信封面推荐 2.35:1
 

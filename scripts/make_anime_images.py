@@ -24,7 +24,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 
-from overlay_text import overlay_card  # noqa: E402
+from overlay_text import overlay, overlay_card  # noqa: E402
 
 BAOYU_SCRIPT = os.path.join(
     os.path.expanduser("~"), ".claude", "skills", "baoyu-image-gen", "scripts", "main.ts"
@@ -61,6 +61,22 @@ STYLE = (
     "画面中不要出现任何文字、字幕、水印、logo。"
 )
 
+# 搞笑卡通：和 output/story/ 同一套（make_comic_story 直接复用这里的字符串，改一处两边同步）
+COMIC_STYLE = (
+    "极简手绘贴纸风（简笔画漫画），粗黑线条勾边，纯白背景，"
+    "平涂上色，无阴影、无渐变、无纹理。马卡龙柔和配色（浅绿、粉红、棕色、米白）。"
+    "人物是超简 Q 版：圆头，点状眼睛，小小的一字嘴，脸颊腮红，"
+    "圆滚滚的小手和小短腿，造型可爱好笑。"
+    "道具只用简单几何形状表示（例如被子是一个圆角矩形）。"
+    "固定角色：一个棕发妈妈（珊瑚粉上衣）和一个光头小婴儿（浅绿连体衣），"
+    "同一角色、同一画风贯穿全部画面。"
+    "整张图只画一个场景，不要上下分格、不要左右拼图、不要边框。"
+    "大量留白，主体居中偏上，画面底部留出约四分之一的空白。"
+    "画面中不要出现任何文字、字幕、台词气泡、水印、logo。"
+)
+
+STYLES = {"anime": STYLE, "comic": COMIC_STYLE}
+
 
 def _has_bun() -> bool:
     return shutil.which("bun") is not None
@@ -91,7 +107,18 @@ def _generate_base(prompt: str, out_png: str, force: bool = False, ar: str | Non
     return out_png
 
 
-def render_anime_cards(post: dict, out_dir: str, force: bool = False) -> list[str]:
+def _comic_text(card: dict) -> tuple[str, str]:
+    """comic 画风：白底 + 底部留白，压黑字（不画压暗渐变），主句大、副句小。"""
+    if card.get("a") and card.get("b"):
+        return card["a"], card["b"]
+    if card.get("lines"):
+        return card.get("label", ""), " · ".join(card["lines"][:3])
+    return card.get("text", ""), card.get("sub", "")
+
+
+def render_anime_cards(post: dict, out_dir: str, force: bool = False,
+                       style: str = "anime") -> list[str]:
+    preset = STYLES.get(style, STYLES["anime"])
     cards = post["cards"][:3]
     os.makedirs(out_dir, exist_ok=True)
     paths = []
@@ -105,10 +132,17 @@ def render_anime_cards(post: dict, out_dir: str, force: bool = False) -> list[st
 
         base = os.path.join(out_dir, f"_base_{i:02d}.png")
         print(f"  第 {i} 张：生成底图…")
-        _generate_base(STYLE + scene, base, force=force)
+        _generate_base(preset + scene, base, force=force)
 
         out = os.path.join(out_dir, f"{i:02d}.jpg")
-        overlay_card(base, out, card)
+        if style == "comic":
+            main, sub = _comic_text(card)
+            # 白底留白区只够一行主文案：12 字的 a/b 必须降到 84px 才不折行，
+            # 折成两行会把文字块顶进插画里（黑字压深色背景看不清）
+            overlay(base, out, main, sub, scrim=False, dark_text=True,
+                    main_sizes=(108, 100, 92, 84), max_main_lines=1)
+        else:
+            overlay_card(base, out, card)
         print(f"  第 {i} 张：已叠字 → {os.path.relpath(out, ROOT)}")
         paths.append(out)
 
@@ -120,19 +154,21 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="动漫插画贴图卡渲染")
     ap.add_argument("post", help="post JSON 路径")
     ap.add_argument("--force", action="store_true", help="忽略底图缓存，重新生成")
-    ap.add_argument("--out", help="输出目录（默认 output/tietu/<slug>/anime）")
+    ap.add_argument("--style", choices=sorted(STYLES), default="anime",
+                    help="anime=日系插画（默认）；comic=极简搞笑贴纸（白底黑字）")
+    ap.add_argument("--out", help="输出目录（默认 output/tietu/<slug>/<style>）")
     args = ap.parse_args()
 
     with open(args.post, encoding="utf-8") as f:
         post = json.load(f)
 
     slug = post.get("slug", "post")
-    out_dir = args.out or os.path.join(ROOT, "output", "tietu", slug, "anime")
+    out_dir = args.out or os.path.join(ROOT, "output", "tietu", slug, args.style)
     if len(post["cards"]) > 3:
         print(f"[手册校验] 规定 1-3 张，JSON 里写了 {len(post['cards'])} 张，只取前 3 张。")
 
-    print(f"=== {slug} ===")
-    paths = render_anime_cards(post, out_dir, force=args.force)
+    print(f"=== {slug}（{args.style}）===")
+    paths = render_anime_cards(post, out_dir, force=args.force, style=args.style)
     print(f"完成 {len(paths)} 张 → {os.path.relpath(out_dir, ROOT)}")
 
 

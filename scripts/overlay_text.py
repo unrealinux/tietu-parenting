@@ -120,15 +120,18 @@ def _draw_scrim(img: Image.Image, top: int) -> None:
 
 
 def overlay(image_path: str, out_path: str, text: str, sub: str = "",
-            per_line: int = 9, scrim: bool = True, dark_text: bool = False) -> str:
+            per_line: int = 9, scrim: bool = True, dark_text: bool = False,
+            main_sizes: tuple[int, ...] | None = None,
+            max_main_lines: int = 3) -> str:
     """底图 + 底部叠字。
 
     scrim=False   不画背景压暗渐变（适合纯白底的简笔画，叠黑字）
     dark_text=True 黑字白描边（white background 风格专用）
+    main_sizes / max_main_lines  控制主文案字号与行数（白底留白区窄时限制成一行）
     """
     img = _cover(Image.open(image_path).convert("RGB"))
 
-    f_main, main_lines = _fit_main(text)
+    f_main, main_lines = _fit_main(text, sizes=main_sizes, max_lines=max_main_lines)
     line_h = int(f_main.size * 1.32)
 
     sub_lines = _wrap(sub, 16) if sub else []

@@ -30,6 +30,7 @@ PY="C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe"
 
 "$PY" scripts/tietu_queue.py                    # 只出图+校验，不联网（默认，先跑这个）
 "$PY" scripts/tietu_queue.py status             # 看本地队列
+"$PY" scripts/tietu_queue.py copy               # 汇总所有标题 + 文案 → output/tietu/文案.txt（不联网）
 "$PY" scripts/tietu_queue.py list               # 拉线上草稿箱对照
 "$PY" scripts/tietu_queue.py sync               # 线上草稿回填本地，防重建
 "$PY" scripts/tietu_queue.py --slug xxx --commit # 真建草稿
@@ -41,23 +42,29 @@ PY="C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe"
 
 单条出图：`"$PY" scripts/publish_tietu.py posts/xxx.json --images-only`
 
-## 两种图风
+## 三种图风
 
-| | `--style text`（默认） | `--style anime` |
-|---|---|---|
-| 底图 | 无，米白纸色 | Agnes 生成动漫插画（`agnes-image-2.1-flash`） |
-| 文字 | 楷体居中 | 雅黑粗体 + 描边，压底部渐隐 |
-| 耗时 | 1 秒/条 | 约 75–90 秒/条（25 秒/张） |
-| 输出 | `output/tietu/<slug>/` | `output/tietu/<slug>/anime/` |
-| 版权 | 零风险 | AI 生成，见下方红线 |
+| | `--style text`（默认） | `--style anime` | `--style comic`（搞笑） |
+|---|---|---|---|
+| 底图 | 无，米白纸色 | Agnes 日系动漫插画 | Agnes 极简搞笑贴纸（纯白底） |
+| 文字 | 楷体居中 | 雅黑粗体 + 描边，压底部渐隐 | 黑字压底部留白区，主句大、副句小，不画渐隐 |
+| 耗时 | 1 秒/条 | 约 75–90 秒/条（25 秒/张） | 同 anime |
+| 输出 | `output/tietu/<slug>/` | `output/tietu/<slug>/anime/` | `output/tietu/<slug>/comic/` |
+| 版权 | 零风险 | AI 生成，见下方红线 | 同 anime |
+| 适合 | 素材够、不想配图 | 温情、细腻、共情 | 吐槽、自嘲、反差，越夸张越好 |
 
 ```bash
 "$PY" scripts/tietu_queue.py --style anime                       # 全量出插画版，不联网
-"$PY" scripts/tietu_queue.py --slug xxx --style anime --commit    # 出图 + 建草稿
-"$PY" scripts/make_anime_images.py posts/tietu_004_xxx.json --force  # 单条重生成
+"$PY" scripts/tietu_queue.py --style comic                       # 全量出搞笑版
+"$PY" scripts/tietu_queue.py --slug xxx --style comic --commit    # 出图 + 建草稿
+"$PY" scripts/make_anime_images.py posts/tietu_012_xxx.json --style comic --force  # 单条重生成
 ```
 
-插画版怎么配画面：在 post JSON 每张卡上加 `scene` 字段（中文场景描述）。
+`comic` 和 `output/story/` 的漫画故事**共用同一份画风描述**（`make_anime_images.COMIC_STYLE`），
+改画风只改那一处，两个流程一起生效。
+
+插画版/搞笑版怎么配画面：在 post JSON 每张卡上加 `scene` 字段（中文场景描述）。
+搞笑版建议在 `scene` 里写夸张表情和动作（打哈欠、翻白眼、扶额、扒栏杆），出图会明显更好笑。
 底图会缓存为 `anime/_base_0N.png`，重跑只重新叠字，不重复花生成额度。
 
 ```json
@@ -99,7 +106,7 @@ PY="C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe"
 ```json
 {
   "slug": "kid-one-vs-two",
-  "title": "草稿标题（≤64字）",
+  "title": "草稿标题（自控 ≤20 字，微信硬上限 64）",
   "content": "发布文案，不重复图上文字",
   "cards": [
     {"a": "一胎：照书养", "b": "二胎：照猪养"},
@@ -114,7 +121,9 @@ PY="C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe"
 ## 排版硬限制（踩过的坑）
 
 - 单句卡主文案 **≤8 个汉字**，否则会在第 8 字折行、末尾留 2 字孤行。9–12 字和 13 字以上都会出孤行。
+- **标题控制在 20 字以内**（自己的要求；超过脚本报警告，微信硬上限是 64 字）。改完标题不用重出图，标题不在图上。
 - 对比卡 a/b 各自 **≤12 字**一行；超过 12 字折行，末尾少于 4 字同样难看。
+- 搞笑版（comic）主文案固定压成一行：12 字自动降到 84px，超过 12 字仍会折行顶到插画上，所以 a/b 照样要守 ≤12 字。
 - 单句卡副文案按 20 字折行，控制在 20 字内一行最好看。
 - 改完 JSON 必须重出图，脚本不会自动比对。
 
