@@ -54,6 +54,10 @@ TITLE_SOFT = 20           # 自己的排版要求：标题控制在 20 字以内
 CONTENT_WARN = 2000       # 图片消息文案建议上限（SOP：短文案）
 IMAGE_MIN, IMAGE_MAX = 1, 3   # SOP 手册硬规则
 
+# 对比卡单行字数上限（a 侧主句 / b 侧副句）——超过就折行，末行短了还留孤字
+# comic：主句限 1 行，副句小字按 16 字折行；anime/text：两侧都是主句字号，都限 12
+PAIR_LIMITS = {"comic": (12, 16), "anime": (12, 12), "text": (12, 12)}
+
 
 # ---------- 状态文件 ----------
 
@@ -80,9 +84,10 @@ def save_state(state: dict) -> None:
 
 # ---------- 校验（SOP 手册硬规则） ----------
 
-def validate(post: dict, allow_many: bool = False) -> tuple[list[str], list[str]]:
+def validate(post: dict, allow_many: bool = False, style: str = "text") -> tuple[list[str], list[str]]:
     """返回 (errors, warnings)。errors 非空则该条拒绝执行。"""
     errors, warnings = [], []
+    a_max, b_max = PAIR_LIMITS.get(style, PAIR_LIMITS["text"])
 
     for field in ("slug", "title", "content", "cards"):
         if not post.get(field):
@@ -115,9 +120,10 @@ def validate(post: dict, allow_many: bool = False) -> tuple[list[str], list[str]
         if kind == "lines" and len(c["lines"]) > 3:
             warnings.append(f"第 {i} 张列了 {len(c['lines'])} 行，渲染只取前 3 行")
         if kind == "pair":
-            for k in ("a", "b"):
-                if len(c[k]) > 24:
-                    warnings.append(f"第 {i} 张对比卡 {k} 侧 {len(c[k])} 字，会折行偏挤")
+            for k, limit in (("a", a_max), ("b", b_max)):
+                if len(c[k]) > limit:
+                    warnings.append(
+                        f"第 {i} 张对比卡 {k} 侧 {len(c[k])} 字 > {style} 上限 {limit}，会折行偏挤")
 
     # 递进自检提示（SOP：遮住一张内容不受影响 = 该删）
     # 只在「全是单句卡」时报——这才是最容易变成装饰图的写法
@@ -147,13 +153,16 @@ def cmd_run(args) -> int:
     publisher = None
 
     for path in files:
+        if args.limit and ok >= args.limit:
+            print(f"\n已达到 --limit {args.limit}，剩下的留到下次")
+            break
         name = os.path.basename(path)
         with open(path, encoding="utf-8") as f:
             post = json.load(f)
         slug = post.get("slug") or os.path.splitext(name)[0]
 
         print(f"\n=== {slug} ({name}) ===")
-        errors, warnings = validate(post, allow_many=args.allow_many)
+        errors, warnings = validate(post, allow_many=args.allow_many, style=args.style)
         for w in warnings:
             print(f"  [警告] {w}")
         if errors:
@@ -218,7 +227,8 @@ def cmd_run(args) -> int:
         save_state(state)
 
     save_state(state)
-    copy_path = write_copy_sheet(files)
+    # 不带参数：始终按 posts/ 全量汇总，别写成只含本次 --slug 的那几条
+    copy_path = write_copy_sheet()
     if copy_path:
         print(f"文案汇总已刷新 → {os.path.relpath(copy_path, ROOT)}")
     print(f"\n本轮：成功 {ok} · 跳过 {skip} · 失败 {failed}")
@@ -488,6 +498,8 @@ def main() -> None:
                     help="text=纯文字卡（默认）；anime=Agnes 日系插画底图+叠字；comic=简笔画搞笑底图+白底黑字")
     ap.add_argument("--force", action="store_true", help="anime 风格下忽略底图缓存重生成")
     ap.add_argument("--count", type=int, default=20, help="list 拉取条数")
+    ap.add_argument("--limit", type=int, default=0,
+                    help="本轮最多处理几条（0=不限）；定时任务用 --limit 1 保证一天只建一条")
     ap.add_argument("--published", action="store_true", help="list 时改看「已发布」而不是草稿箱")
     ap.add_argument("--yes", action="store_true", help="prune / publish 二次确认")
     args = ap.parse_args()

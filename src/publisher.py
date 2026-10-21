@@ -265,59 +265,8 @@ class WeChatPublisher:
         url = "https://api.weixin.qq.com/cgi-bin/draft/add"
         params = {"access_token": token}
         
-        @with_retry(max_retries=2, delay=2.0)
-        def _create_draft():
-            proxies = self.proxies if self.use_proxy else {}
-            
-            # 确保内容是UTF-8编码的字符串
-            import json
-            article_json = json.dumps({"articles": [article]}, ensure_ascii=False).encode('utf-8')
-            
-            # 手动发送请求，确保正确的编码
-            headers = {'Content-Type': 'application/json; charset=utf-8'}
-            response = requests.post(
-                url, params=params, data=article_json, 
-                headers=headers, timeout=30, proxies=proxies
-            )
-            data = response.json()
-            # 微信草稿箱接口：成功时返回 {"media_id": "xxx"}，失败时返回{"errcode": xxx, "errmsg": "xxx"}
-            if "media_id" in data:
-                return data.get("media_id")
-            elif data.get("errcode", 0) != 0:
-                error_msg = data.get("errmsg", "Unknown error")
-                error_code = data.get("errcode", -1)
-                raise AppError(
-                    f"创建草稿失败: {error_msg}",
-                    error_type=ErrorType.SYSTEM,
-                    context={"error_code": error_code}
-                )
-            else:
-                # 未知响应格式
-                raise AppError(
-                    f"创建草稿返回未知格式: {data}",
-                    error_type=ErrorType.SYSTEM
-                )
-            data = response.json()
-            # 微信草稿箱接口：成功时返回 {"media_id": "xxx"}，失败时返回 {"errcode": xxx, "errmsg": "xxx"}
-            if "media_id" in data:
-                return data.get("media_id")
-            elif data.get("errcode", 0) != 0:
-                error_msg = data.get("errmsg", "Unknown error")
-                error_code = data.get("errcode", -1)
-                raise AppError(
-                    f"创建草稿失败: {error_msg}",
-                    error_type=ErrorType.SYSTEM,
-                    context={"error_code": error_code}
-                )
-            else:
-                # 未知响应格式
-                raise AppError(
-                    f"创建草稿返回未知格式: {data}",
-                    error_type=ErrorType.SYSTEM
-                )
-        
         try:
-            media_id = _create_draft()
+            media_id = self._post_draft_with_guard(url, params, article)
             if media_id:
                 logger.info(f"Draft created: {media_id}")
                 if self._health_checker:
@@ -338,6 +287,53 @@ class WeChatPublisher:
                 self._health_checker.inc_publish_failure()
             return None
     
+    def find_draft_by_title(self, title: str, pages: int = 2) -> Optional[str]:
+        """按标题在草稿箱里找 media_id（draft/add 重试防重复用）。
+
+        draft/add 不是幂等接口：服务端已经建成功、但响应超时，盲目重试就会
+        再建一条同标题重复草稿。线上出现过两次（其中一条正文图全无），
+        所以重试前必须先查一次草稿箱。
+        """
+        want = (title or "").strip()
+        if not want:
+            return None
+        for i in range(max(1, pages)):
+            for t, mid in self.list_drafts(offset=i * 20, count=20):
+                if t.strip() == want:
+                    return mid
+        return None
+
+    def _post_draft_with_guard(self, url: str, params: dict, article: dict) -> str:
+        """POST 建草稿；每次重试前先查草稿箱，避免超时重试造成重复草稿。"""
+        body = json.dumps({"articles": [article]}, ensure_ascii=False).encode("utf-8")
+        headers = {"Content-Type": "application/json; charset=utf-8"}
+        proxies = self.proxies if self.use_proxy else {}
+        delay = 2.0
+
+        for attempt in range(3):
+            try:
+                response = requests.post(url, params=params, data=body,
+                                         headers=headers, timeout=30, proxies=proxies)
+                data = response.json()
+                if "media_id" in data:
+                    return data["media_id"]
+                raise AppError(
+                    f"创建草稿失败: {data.get('errmsg', data)}",
+                    error_type=ErrorType.SYSTEM,
+                    context={"error_code": data.get("errcode", -1)},
+                )
+            except Exception as e:
+                if attempt == 2:
+                    raise
+                existing = self.find_draft_by_title(article.get("title", ""))
+                if existing:
+                    logger.warning(f"上次请求可能已建成功，复用现有草稿 {existing}，不再重发")
+                    return existing
+                logger.warning(f"建草稿失败，{delay:.0f}s 后重试: {e}")
+                time.sleep(delay)
+                delay *= 2
+        raise AppError("创建草稿失败", error_type=ErrorType.SYSTEM)
+
     def create_image_draft(self, title: str, content: str, image_paths: List[str],
                            need_open_comment: int = 1,
                            only_fans_can_comment: int = 0) -> Optional[str]:
@@ -384,24 +380,8 @@ class WeChatPublisher:
         url = "https://api.weixin.qq.com/cgi-bin/draft/add"
         params = {"access_token": token}
 
-        @with_retry(max_retries=2, delay=2.0)
-        def _create():
-            proxies = self.proxies if self.use_proxy else {}
-            body = json.dumps({"articles": [article]}, ensure_ascii=False).encode("utf-8")
-            headers = {"Content-Type": "application/json; charset=utf-8"}
-            response = requests.post(url, params=params, data=body,
-                                     headers=headers, timeout=30, proxies=proxies)
-            data = response.json()
-            if "media_id" in data:
-                return data["media_id"]
-            raise AppError(
-                f"创建图片草稿失败: {data.get('errmsg', data)}",
-                error_type=ErrorType.SYSTEM,
-                context={"error_code": data.get("errcode", -1)},
-            )
-
         try:
-            media_id = _create()
+            media_id = self._post_draft_with_guard(url, params, article)
             logger.info(f"图片草稿已创建: {media_id}")
             if self._health_checker:
                 self._health_checker.inc_published()
