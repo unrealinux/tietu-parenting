@@ -136,7 +136,8 @@ def validate(post: dict, allow_many: bool = False, style: str = "text") -> tuple
 # ---------- 主流程 ----------
 
 def discover(slug: str | None = None) -> list[str]:
-    files = sorted(glob.glob(os.path.join(POSTS_DIR, "tietu_*.json")))
+    # 新的编号优先（031 → 004），积压的老贴图排到新内容之后
+    files = sorted(glob.glob(os.path.join(POSTS_DIR, "tietu_*.json")), reverse=True)
     if slug:
         files = [f for f in files if slug in os.path.basename(f)]
     return files
@@ -173,8 +174,10 @@ def cmd_run(args) -> int:
             continue
 
         rec = state.get(slug, {})
-        if args.commit and rec.get("status") == "drafted" and rec.get("media_id"):
-            print(f"  [跳过] 已建草稿 media_id={rec['media_id']}（改内容请先 status 里清掉或换 slug）")
+        # 已建草稿 / 已发布 / 历史遗留：都不再自动建，避免重复草稿
+        # 要重做：把 _queue.json 里这条删掉，或用 --slug 单独跑
+        if args.commit and rec.get("status") in ("drafted", "published", "legacy"):
+            print(f"  [跳过] 状态 {rec['status']}，已有记录（要重做先删掉这条记录）")
             skip += 1
             continue
 
@@ -356,7 +359,9 @@ def cmd_publish(args) -> int:
     不带 --yes 只列出会发什么，不连微信。
     """
     state = load_state()
-    targets = {s: r for s, r in state.items() if r.get("media_id")}
+    # 只有 drafted 才能发；published / gone / publish_failed 别再碰
+    targets = {s: r for s, r in state.items()
+               if r.get("media_id") and r.get("status") == "drafted"}
     if args.slug:
         targets = {s: r for s, r in targets.items() if args.slug in s}
     if not targets:

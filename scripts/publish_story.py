@@ -9,7 +9,11 @@
     # 真建草稿（会真实写入素材库 + 草稿箱）
     python scripts/publish_story.py posts/story_001_solo-24h.json --commit
 
+    # 定时任务用：自动挑第一篇还没草稿的 story，图不全就先出图
+    python scripts/publish_story.py --next --commit
+
 产物来自 make_comic_story.py：output/story/<slug>/01.jpg…NN.jpg + cover.jpg
+已建的 slug 记在 output/story/_state.json，重复跑不会重复建草稿。
 """
 import argparse
 import glob
@@ -17,6 +21,7 @@ import json
 import os
 import re
 import sys
+from datetime import datetime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -24,7 +29,44 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
 OUT_ROOT = os.path.join(ROOT, "output", "story")
+STATE_PATH = os.path.join(OUT_ROOT, "_state.json")
 AUTHOR = "育儿观察"
+
+
+def _load_state() -> dict:
+    if os.path.exists(STATE_PATH):
+        with open(STATE_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+def _save_state(state: dict) -> None:
+    os.makedirs(OUT_ROOT, exist_ok=True)
+    with open(STATE_PATH, "w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=False, indent=2)
+
+
+def _online_titles() -> set[str]:
+    """线上草稿箱 + 已发布列表的标题，用来防止重复建草稿。"""
+    from publisher import WeChatPublisher
+
+    p = WeChatPublisher()
+    titles: set[str] = set()
+    for offset in (0, 20, 40):
+        titles |= {(t or "").strip() for t, _ in p.list_drafts(offset, 20)}
+        titles |= {(t or "").strip() for t, *_ in p.list_published(offset, 20)}
+    return titles
+
+
+def _pick_next(state: dict, taken: set[str]) -> tuple[str, dict] | tuple[None, None]:
+    """按文件名顺序取第一篇「本地没记过、线上也没有」的 story。"""
+    for path in sorted(glob.glob(os.path.join(ROOT, "posts", "story_*.json"))):
+        with open(path, encoding="utf-8") as f:
+            story = json.load(f)
+        if story.get("slug") in state or (story.get("title") or "").strip() in taken:
+            continue
+        return path, story
+    return None, None
 
 
 def _collect(out_dir: str) -> tuple[list[str], str]:
@@ -49,18 +91,38 @@ def _build_html(story: dict, image_urls: list[str]) -> str:
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description="图片故事 → 服务号图文草稿")
-    ap.add_argument("story", help="story JSON 路径")
+    ap.add_argument("story", nargs="?", help="story JSON 路径")
+    ap.add_argument("--next", action="store_true",
+                    help="自动挑第一篇还没草稿的 story（定时任务用）")
     ap.add_argument("--dry-run", action="store_true", help="只本地自检，不联网")
     ap.add_argument("--commit", action="store_true", help="真建草稿（写入线上账号）")
     ap.add_argument("--images", help="指定图片目录（默认 output/story/<slug>）")
     args = ap.parse_args()
 
-    with open(args.story, encoding="utf-8") as f:
-        story = json.load(f)
+    state = _load_state()
+    if args.next:
+        path, story = _pick_next(state, _online_titles())
+        if not path:
+            print("没有待建草稿的 story（全部已有草稿或已发布）。")
+            return
+        print(f"本轮选中的 story：{os.path.relpath(path, ROOT)}")
+    else:
+        if not args.story:
+            ap.error("需要 story 路径，或加 --next 自动挑")
+        path = args.story
+        with open(path, encoding="utf-8") as f:
+            story = json.load(f)
 
     slug = story.get("slug", "story")
     out_dir = args.images or os.path.join(OUT_ROOT, slug)
     images, cover = _collect(out_dir)
+
+    if args.next and (len(images) < 2 or not os.path.exists(cover)):
+        print("图片不全，先生成…")
+        from make_comic_story import render_story
+
+        render_story(story, out_dir)
+        images, cover = _collect(out_dir)
 
     print(f"=== {story['title']} ===")
     print(f"目录   : {os.path.relpath(out_dir, ROOT)}")
@@ -102,6 +164,12 @@ def main() -> None:
         print("       素材和草稿箱接口都要认证后才开通，当前发不了。")
         sys.exit(2)
 
+    # draft/add 不幂等：重跑一次就多一条同标题草稿，先查草稿箱
+    existing = p.find_draft_by_title(story["title"])
+    if existing:
+        print(f"[跳过] 草稿箱已有同标题草稿 media_id={existing}（要重建先删掉那条）")
+        return
+
     print("上传封面（永久素材）…")
     thumb_id = p._upload_media(cover, "image") if hasattr(p, "_upload_media") else None
     if not thumb_id:
@@ -125,6 +193,13 @@ def main() -> None:
         cover_media_id=thumb_id,
     )
     if media_id:
+        state[slug] = {
+            "status": "drafted",
+            "media_id": media_id,
+            "title": story["title"],
+            "at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        _save_state(state)
         print(f"OK 草稿已建 media_id={media_id}")
         print("去公众号后台「草稿箱」核对后手动发表。")
     else:

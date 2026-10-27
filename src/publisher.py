@@ -856,6 +856,8 @@ class WeChatPublisher:
                 timeout=30,
                 proxies=self.proxies if self.use_proxy else {},
             )
+            # 同 list_drafts：接口返回 text/plain 无 charset，不显式指定会得到乱码标题
+            response.encoding = "utf-8"
             data = response.json()
         except Exception as e:
             logger.error(f"拉取已发布列表异常: {e}")

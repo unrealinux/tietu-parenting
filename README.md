@@ -84,6 +84,22 @@ PY="C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe"
 3. `scene` 里不要让真实孩子出镜：底图只能是纯 AI 虚构角色，不要把真实孩子的照片投进生成
 4. AI 图仍按 SOP 排在「实拍 > 授权 > 图库」之后，同一条内容优先用能拍到的素材
 
+## 图片故事 + 每日定时任务
+
+```bash
+"$PY" scripts/make_comic_story.py posts/story_006_own-bed-night.json          # 只出图
+"$PY" scripts/publish_story.py posts/story_006_own-bed-night.json --dry-run   # 本地自检
+"$PY" scripts/publish_story.py posts/story_006_own-bed-night.json --commit    # 真建草稿
+"$PY" scripts/publish_story.py --next                                          # 看下一轮会建哪篇
+```
+
+Windows 计划任务 `tietu-daily`（每天 8:30）跑 `scripts/daily_drafts.cmd`，一次做两件事：
+
+1. `publish_story.py --next --commit` —— 挑 `posts/story_*.json` 里第一篇本地没记录、线上没同标题的 story，图不全先出图，再建图文草稿；已建的记在 `output/story/_state.json`
+2. `tietu_queue.py --style comic --limit 3 --commit` —— 建 3 篇最近编号的贴图草稿（`TIETU_COUNT` 可改），最新优先，积压的排到后面
+
+只建草稿，永不发布；重复跑安全。发布仍然手动：`tietu_queue.py publish --slug <slug> --yes`。
+
 ## 发布：先 `perm` 再 `publish`
 
 **「发布」和「群发」不是一回事：**
