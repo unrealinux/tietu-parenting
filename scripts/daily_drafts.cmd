@@ -24,7 +24,7 @@ echo [%date% %time%] end attempt=%ATTEMPT% story_rc=%SRC% tietu_rc=%TRC% >> "%LO
 if %SRC%==0 if %TRC%==0 goto done
 if %ATTEMPT% GEQ 3 goto done
 echo [%date% %time%] retry in 15 min (经常是 IP 白名单 40164，换网后 IP 变了) >> "%LOG%"
-timeout /t 900 /nobreak >nul
+%SystemRoot%\System32\timeout.exe /t 900 /nobreak >nul
 goto try
 
 :done
