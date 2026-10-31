@@ -117,7 +117,7 @@ class WeChatPublisher:
         def _fetch_token():
             proxies = self.proxies if self.use_proxy else {}
             
-            response = requests.get(url, params=params, timeout=10, proxies=proxies)
+            response = requests.get(url, params=params, timeout=30, proxies=proxies)
             data = response.json()
             
             if "access_token" in data:

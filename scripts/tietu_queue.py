@@ -444,6 +444,9 @@ def cmd_list(args) -> int:
         return 0
 
     drafts = p.list_drafts(offset=0, count=args.count)
+    if not p.get_access_token():
+        print("拿不到 token（网络/IP 白名单），拉不到草稿箱，先别据此回填状态")
+        return 1
     state = load_state()
     remote_ids = {mid for _, mid in drafts}
     print(f"线上草稿箱 {len(drafts)} 条：")
