@@ -56,7 +56,7 @@ IMAGE_MIN, IMAGE_MAX = 1, 3   # SOP 手册硬规则
 
 # 对比卡单行字数上限（a 侧主句 / b 侧副句）——超过就折行，末行短了还留孤字
 # comic：主句限 1 行，副句小字按 16 字折行；anime/text：两侧都是主句字号，都限 12
-PAIR_LIMITS = {"comic": (12, 16), "anime": (12, 12), "text": (12, 12)}
+PAIR_LIMITS = {"comic": (12, 16), "anime": (12, 12), "text": (12, 12), "photo": (12, 12)}
 
 
 # ---------- 状态文件 ----------
@@ -187,6 +187,9 @@ def cmd_run(args) -> int:
             from make_anime_images import render_anime_cards
             image_paths = render_anime_cards(post, os.path.join(out_dir, style),
                                              force=getattr(args, "force", False), style=style)
+        elif style == "photo":
+            from make_tietu_images import render_photo_cards
+            image_paths = render_photo_cards(post, os.path.join(out_dir, "photo"))
         else:
             image_paths = render_cards(post, out_dir)
         print(f"  已出图 {len(image_paths)} 张 → {os.path.relpath(out_dir, ROOT)}")
@@ -502,7 +505,7 @@ def main() -> None:
     ap.add_argument("--no-comment", action="store_true", help="关闭留言")
     ap.add_argument("--allow-many", action="store_true",
                     help="允许超过 3 张卡（跳过 SOP 手册校验，渲染仍只取前 3 张）")
-    ap.add_argument("--style", choices=["text", "anime", "comic"], default="text",
+    ap.add_argument("--style", choices=["text", "anime", "comic", "photo"], default="text",
                     help="text=纯文字卡（默认）；anime=Agnes 日系插画底图+叠字；comic=简笔画搞笑底图+白底黑字")
     ap.add_argument("--force", action="store_true", help="anime 风格下忽略底图缓存重生成")
     ap.add_argument("--count", type=int, default=20, help="list 拉取条数")

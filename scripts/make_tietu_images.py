@@ -25,6 +25,10 @@ import sys
 
 from PIL import Image, ImageDraw, ImageFont
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+MATERIALS_DIR = os.path.join(ROOT, "materials")   # 实拍/手绘素材：materials/<slug>/01.jpg…
+
 W, H = 1080, 1440  # 3:4
 MARGIN = 110
 BG = (250, 247, 240)          # 米白纸
@@ -158,6 +162,33 @@ def render_cards(post: dict, out_dir: str) -> list[str]:
         img.save(path, quality=85, optimize=True, progressive=True, subsampling=1)
         paths.append(path)
 
+    return paths
+
+
+def render_photo_cards(post: dict, out_dir: str) -> list[str]:
+    """实拍素材版：用 materials/<slug>/ 里的图当底图，按卡片结构叠字。
+
+    post 里写 "photos": ["01.jpg", "02.jpg", "03.jpg"]（也可写绝对路径），
+    第 N 张卡用第 N 张图；图不够就重复最后一张。文字叠法复用 overlay_card。
+    """
+    from overlay_text import overlay_card
+
+    slug = post["slug"]
+    photos = post.get("photos") or []
+    cards = post["cards"][:3]
+    if not photos:
+        raise RuntimeError(f"{slug} 没写 photos 字段（materials/{slug}/ 下的文件名）")
+
+    os.makedirs(out_dir, exist_ok=True)
+    paths = []
+    for i, card in enumerate(cards):
+        name = photos[i] if i < len(photos) else photos[-1]
+        src = name if os.path.isabs(name) else os.path.join(MATERIALS_DIR, slug, name)
+        if not os.path.exists(src):
+            raise RuntimeError(f"找不到素材图：{src}")
+        out = os.path.join(out_dir, f"{i + 1:02d}.jpg")
+        overlay_card(src, out, card)
+        paths.append(out)
     return paths
 
 

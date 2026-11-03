@@ -84,6 +84,17 @@ PY="C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe"
 3. `scene` 里不要让真实孩子出镜：底图只能是纯 AI 虚构角色，不要把真实孩子的照片投进生成
 4. AI 图仍按 SOP 排在「实拍 > 授权 > 图库」之后，同一条内容优先用能拍到的素材
 
+## 数据源与选题
+
+四层数据源见 `references/DATA-SOURCES.md`：
+
+- 素材：`materials/<slug>/` 放实拍图，post 里写 `"photos": [...]`，`--style photo` 出图
+- 选题：截图/评论/一句话丢 `references/intake/`，沉淀到根目录 `topics.md` 选题池
+- 数据：`output/stats/articles.json`（单篇，截图或 `log_stats.py` 记）、`user_summary.json`（粉丝，`fetch_stats.py`）
+- 风格：`references/` 两份规则 + 已发文案作为口吻基线
+
+写新内容先看 `topics.md`，从「待写」取，不凭空想。
+
 ## 图片故事 + 每日定时任务
 
 ```bash

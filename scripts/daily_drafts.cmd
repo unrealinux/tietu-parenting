@@ -8,7 +8,7 @@ setlocal
 cd /d "E:\Project\tietu-parenting"
 if not exist "E:\Project\tietu-parenting\logs" mkdir "E:\Project\tietu-parenting\logs"
 set PY=C:\Users\Administrator\AppData\Local\Programs\Python\Python314\python.exe
-set TIETU_COUNT=3
+set TIETU_COUNT=1
 set LOG=E:\Project\tietu-parenting\logs\daily-drafts.log
 set ATTEMPT=0
 
@@ -28,4 +28,9 @@ ping -n 900 127.0.0.1 >nul
 goto try
 
 :done
+rem 库存告警：不够两批就让计划任务显示失败，别静悄悄空转
+"%PY%" "E:\Project\tietu-parenting\scripts\check_stock.py" --groups 2 >> "%LOG%" 2>&1
+set STK=%errorlevel%
+if %STK% NEQ 0 echo [%date% %time%] WARN stock low: 需要补存稿 >> "%LOG%"
+if %STK% NEQ 0 exit /b 1
 exit /b 0
