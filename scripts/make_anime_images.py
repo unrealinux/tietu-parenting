@@ -81,8 +81,31 @@ COMIC_STYLE = (
 STYLES = {"anime": STYLE, "comic": COMIC_STYLE}
 
 
+def _bun_cmd() -> list[str] | None:
+    """bun 可执行文件。
+
+    npm 装的是 bun.CMD 包壳，subprocess 直接调会 WinError 2；优先找真 bun.exe。
+    """
+    import glob
+
+    exe = shutil.which("bun.exe")
+    if exe:
+        return [exe]
+    for pattern in (
+        os.path.expanduser("~/.bun/bin/bun.exe"),
+        os.path.join(os.environ.get("APPDATA", ""), "npm", "node_modules", "bun", "bin", "bun.exe"),
+        "C:/Users/Administrator/AppData/Roaming/npm/node_modules/bun/bin/bun.exe",
+    ):
+        if os.path.exists(pattern):
+            return [pattern]
+    shim = shutil.which("bun") or shutil.which("bun.cmd")
+    if shim:
+        return [os.environ.get("COMSPEC", "cmd.exe"), "/c", shim]
+    return None
+
+
 def _has_bun() -> bool:
-    return shutil.which("bun") is not None
+    return _bun_cmd() is not None
 
 
 def _generate_base(prompt: str, out_png: str, force: bool = False, ar: str | None = None) -> str:
@@ -91,8 +114,9 @@ def _generate_base(prompt: str, out_png: str, force: bool = False, ar: str | Non
         print(f"  [缓存] {os.path.basename(out_png)}")
         return out_png
 
-    if not _has_bun():
-        raise RuntimeError("找不到 bun，装一个：https://bun.sh（或 brew install oven-sh/bun/bun）")
+    bun = _bun_cmd()
+    if not bun:
+        raise RuntimeError("找不到 bun，装一个：npm i -g bun（或 https://bun.sh）")
     if not os.path.exists(BAOYU_SCRIPT):
         raise RuntimeError(f"找不到 baoyu-image-gen 脚本：{BAOYU_SCRIPT}")
     _load_env()
@@ -100,7 +124,7 @@ def _generate_base(prompt: str, out_png: str, force: bool = False, ar: str | Non
         raise RuntimeError("缺 AGNES_API_KEY，先填进项目 .env")
 
     os.makedirs(os.path.dirname(out_png), exist_ok=True)
-    cmd = ["bun", BAOYU_SCRIPT, "--prompt", prompt, "--image", out_png,
+    cmd = [*bun, BAOYU_SCRIPT, "--prompt", prompt, "--image", out_png,
            "--provider", PROVIDER, "--ar", ar or AR]
     proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
                           errors="replace")
