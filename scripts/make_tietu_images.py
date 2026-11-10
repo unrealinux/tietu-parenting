@@ -40,6 +40,10 @@ FONT_CANDIDATES = [
     "C:/Windows/Fonts/simkai.ttf",    # 楷体，最接近手写
     "C:/Windows/Fonts/msyh.ttc",
     "C:/Windows/Fonts/simhei.ttf",
+    # Linux 本机回退，保证非 Windows 也能按真实字号出图
+    "/usr/share/fonts/truetype/arphic/ukai.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
 ]
 
 

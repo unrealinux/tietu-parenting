@@ -38,6 +38,8 @@ PY="C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe"
 "$PY" scripts/tietu_queue.py publish                 # 先看会发哪几条（不联网）
 "$PY" scripts/tietu_queue.py publish --yes           # 真发布（不可撤销）
 "$PY" scripts/tietu_queue.py list --published        # 看线上已发布列表
+"$PY" scripts/daily_pair.py --dry-run             # 一轮：贴图+图文只出图/自检
+"$PY" scripts/daily_pair.py                       # 一轮：建贴图草稿 + 图文草稿
 ```
 
 单条出图：`"$PY" scripts/publish_tietu.py posts/xxx.json --images-only`
@@ -75,7 +77,8 @@ PY="C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe"
 }
 ```
 
-依赖：`bun`（已装）+ `.env` 里的 `AGNES_API_KEY` + `~/.claude/skills/baoyu-image-gen`。
+依赖：`bun` + `.env` 里的 `AGNES_API_KEY` + `~/.claude/skills/baoyu-image-gen`（已加 Agnes provider）。
+可选 `AGNES_API_URL` / `AGNES_MODEL` 覆盖端点和模型。
 
 插画风格的额外红线：
 
@@ -128,6 +131,30 @@ Windows 计划任务 `tietu-daily`（每天 8:30）跑 `scripts/daily_drafts.cmd
 
 脚本已做接口回退（`draft/publish` 不可用时自动试 `freepublish/submit`），但 `40164`（IP 白名单）这类错误换个接口也一样失败，不会反复重试。
 
+## 每天两次自动建草稿
+
+`scripts/daily_pair.py` 一轮做两件事：建 1 篇贴图草稿 + 1 篇图文草稿，**不发布**。
+贴图去 `output/tietu/_queue.json` 查重，文章去 `output/story/_queue.json` 查重；
+两篇各自独立，一篇失败不影响另一篇。文章缺图时会先调用 `make_comic_story.py` 生成，
+所以文章侧仍需要 `bun` + `AGNES_API_KEY`；贴图侧没有 Agnes 时用 `--style text`。
+
+```bash
+"$PY" scripts/daily_pair.py --style text --dry-run   # 本机没有 Agnes 时先这样看
+"$PY" scripts/daily_pair.py --style text             # 建两条草稿
+```
+
+Linux cron（每天 08:00 / 20:00）：
+
+```cron
+0 8,20 * * * cd /home/xieyingfei/文档/tietu-parenting && mkdir -p logs && python3 scripts/daily_pair.py >> logs/daily-pair.log 2>&1
+```
+
+Windows 任务计划程序：建两个每日触发器 08:00、20:00，操作选 `python.exe`，
+参数 `scripts\daily_pair.py`，起始目录设为项目根目录。
+
+`daily_pair.py` 只建草稿。贴图发布走 `tietu_queue.py publish --yes`；
+图文草稿在公众号后台「草稿箱」人工点发布。
+
 ## post JSON 结构
 
 ```json
@@ -150,8 +177,8 @@ Windows 计划任务 `tietu-daily`（每天 8:30）跑 `scripts/daily_drafts.cmd
 - 单句卡主文案 **≤8 个汉字**，否则会在第 8 字折行、末尾留 2 字孤行。9–12 字和 13 字以上都会出孤行。
 - **标题控制在 20 字以内**（自己的要求；超过脚本报警告，微信硬上限是 64 字）。改完标题不用重出图，标题不在图上。
 - 对比卡 a/b 各自 **≤12 字**一行；超过 12 字折行，末尾少于 4 字同样难看。
-- 搞笑版（comic）主文案固定压成一行：a 侧 12 字自动降到 84px，超过 12 字仍会折行、末字孤行并顶到插画上；b 侧是小字，按 16 字折行。
-  `tietu_queue.py` 已按画风分别校验：`comic (a≤12, b≤16)`，`anime/text (a≤12, b≤12)`，超了会报警告。
+- 搞笑版（comic）主文案固定压成一行：a 侧 12 字自动降到 84px，超过 12 字继续缩字保持一行（最小 40px，仍放不下才会折行）；b 侧是小字，按 16 字折行。
+  `tietu_queue.py` 已按画风分别校验：对比卡 `comic (a≤12, b≤16)`、`anime/text (a≤12, b≤12)`；单句卡 `comic ≤12`、`anime/text ≤8`；副文案 ≤20。超了会报警告。
 - 单句卡副文案按 20 字折行，控制在 20 字内一行最好看。
 - 改完 JSON 必须重出图，脚本不会自动比对。
 

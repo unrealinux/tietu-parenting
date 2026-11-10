@@ -31,10 +31,14 @@ FONT_CANDIDATES = [
     "C:/Windows/Fonts/msyhbd.ttc",   # 微软雅黑粗体，压在复杂背景上更清楚
     "C:/Windows/Fonts/msyh.ttc",
     "C:/Windows/Fonts/simhei.ttf",
+    # Linux 本机回退
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
 ]
 SUB_FONT_CANDIDATES = [
     "C:/Windows/Fonts/msyh.ttc",
     "C:/Windows/Fonts/simhei.ttf",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
 ]
 
 
@@ -105,7 +109,17 @@ def _fit_main(text: str, sizes: tuple[int, ...] | None = None,
         lines = _wrap(text, per)
         if len(lines) <= max_lines and (len(lines) == 1 or len(lines[-1]) >= 3):
             return f, lines
-    f = _font(FONT_CANDIDATES, sizes[-1])
+
+    # 单行模式（comic）降到底仍折行时继续缩字，避免文字块顶进插画
+    size = sizes[-1]
+    if max_lines == 1:
+        while size > 40:
+            size = max(40, size - 4)
+            f = _font(FONT_CANDIDATES, size)
+            lines = _wrap(text, max(4, int(MAX_TEXT_W // f.size)))
+            if len(lines) == 1:
+                return f, lines
+    f = _font(FONT_CANDIDATES, size)
     return f, _wrap(text, max(4, int(MAX_TEXT_W // f.size)))
 
 

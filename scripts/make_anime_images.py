@@ -82,21 +82,23 @@ STYLES = {"anime": STYLE, "comic": COMIC_STYLE}
 
 
 def _bun_cmd() -> list[str] | None:
-    """bun 可执行文件。
+    """bun 的调用命令。
 
-    npm 装的是 bun.CMD 包壳，subprocess 直接调会 WinError 2；优先找真 bun.exe。
+    POSIX 上 which("bun") 就是真可执行文件（cron 环境 PATH 精简，再兜底 ~/.bun/bin）。
+    Windows 上 npm 装的是 bun.CMD 包壳，subprocess 直接调会 WinError 2，优先找真 bun.exe。
     """
-    import glob
-
     exe = shutil.which("bun.exe")
+    if not exe and os.name != "nt":
+        exe = shutil.which("bun")
     if exe:
         return [exe]
     for pattern in (
         os.path.expanduser("~/.bun/bin/bun.exe"),
+        os.path.expanduser("~/.bun/bin/bun"),
         os.path.join(os.environ.get("APPDATA", ""), "npm", "node_modules", "bun", "bin", "bun.exe"),
         "C:/Users/Administrator/AppData/Roaming/npm/node_modules/bun/bin/bun.exe",
     ):
-        if os.path.exists(pattern):
+        if pattern and os.path.exists(pattern):
             return [pattern]
     shim = shutil.which("bun") or shutil.which("bun.cmd")
     if shim:
@@ -129,8 +131,7 @@ def _generate_base(prompt: str, out_png: str, force: bool = False, ar: str | Non
     proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
                           errors="replace")
     if proc.returncode != 0 or not os.path.exists(out_png):
-        # 两个流的尾巴都给出来：agnes 的报错有时在 stdout，只看 stderr 会只剩一行“Using agnes”
-        tail = ((proc.stderr or "") + (proc.stdout or ""))[-1200:]
+        tail = (proc.stderr or proc.stdout or "")[-600:]
         raise RuntimeError(f"生成失败：{tail}")
     return out_png
 
@@ -167,6 +168,8 @@ def render_anime_cards(post: dict, out_dir: str, force: bool = False,
             main, sub = _comic_text(card)
             # 白底留白区只够一行主文案：12 字的 a/b 必须降到 84px 才不折行，
             # 折成两行会把文字块顶进插画里（黑字压深色背景看不清）
+            if len(main) > 12:
+                print(f"  [警告] 第 {i} 张主文案 {len(main)} 字 > 12，自动缩字保持一行")
             overlay(base, out, main, sub, scrim=False, dark_text=True,
                     main_sizes=(108, 100, 92, 84), max_main_lines=1)
         else:

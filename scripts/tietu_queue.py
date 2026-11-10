@@ -56,7 +56,7 @@ IMAGE_MIN, IMAGE_MAX = 1, 3   # SOP 手册硬规则
 
 # 对比卡单行字数上限（a 侧主句 / b 侧副句）——超过就折行，末行短了还留孤字
 # comic：主句限 1 行，副句小字按 16 字折行；anime/text：两侧都是主句字号，都限 12
-PAIR_LIMITS = {"comic": (12, 16), "anime": (12, 12), "text": (12, 12), "photo": (12, 12)}
+PAIR_LIMITS = {"comic": (12, 16), "anime": (12, 12), "text": (12, 12)}
 
 
 # ---------- 状态文件 ----------
@@ -124,6 +124,16 @@ def validate(post: dict, allow_many: bool = False, style: str = "text") -> tuple
                 if len(c[k]) > limit:
                     warnings.append(
                         f"第 {i} 张对比卡 {k} 侧 {len(c[k])} 字 > {style} 上限 {limit}，会折行偏挤")
+        if kind == "text":
+            # comic 白底留白只够一行，12 字是上限；其余画风按 8 字单行排版
+            main_limit = 12 if style == "comic" else 8
+            text = (c.get("text") or "").strip()
+            if len(text) > main_limit:
+                warnings.append(
+                    f"第 {i} 张单句卡主文案 {len(text)} 字 > {style} 上限 {main_limit}，会折行")
+            sub = (c.get("sub") or "").strip()
+            if len(sub) > 20:
+                warnings.append(f"第 {i} 张单句卡副文案 {len(sub)} 字 > 20，会折行")
 
     # 递进自检提示（SOP：遮住一张内容不受影响 = 该删）
     # 只在「全是单句卡」时报——这才是最容易变成装饰图的写法
@@ -136,8 +146,7 @@ def validate(post: dict, allow_many: bool = False, style: str = "text") -> tuple
 # ---------- 主流程 ----------
 
 def discover(slug: str | None = None) -> list[str]:
-    # 新的编号优先（031 → 004），积压的老贴图排到新内容之后
-    files = sorted(glob.glob(os.path.join(POSTS_DIR, "tietu_*.json")), reverse=True)
+    files = sorted(glob.glob(os.path.join(POSTS_DIR, "tietu_*.json")))
     if slug:
         files = [f for f in files if slug in os.path.basename(f)]
     return files
@@ -174,10 +183,17 @@ def cmd_run(args) -> int:
             continue
 
         rec = state.get(slug, {})
+        if args.commit and rec.get("skip"):
+            print(f"  [跳过] {rec.get('skip_reason', '素材已标记不重发')}")
+            skip += 1
+            continue
         # 已建草稿 / 已发布 / 历史遗留：都不再自动建，避免重复草稿
         # 要重做：把 _queue.json 里这条删掉，或用 --slug 单独跑
-        if args.commit and rec.get("status") in ("drafted", "published", "legacy"):
-            print(f"  [跳过] 状态 {rec['status']}，已有记录（要重做先删掉这条记录）")
+        if args.commit and (
+            (rec.get("status") == "drafted" and rec.get("media_id"))
+            or rec.get("status") in ("published", "legacy")
+        ):
+            print(f"  [跳过] 状态 {rec.get('status', 'drafted')}，已有记录（要重做先删掉这条记录）")
             skip += 1
             continue
 
@@ -187,9 +203,6 @@ def cmd_run(args) -> int:
             from make_anime_images import render_anime_cards
             image_paths = render_anime_cards(post, os.path.join(out_dir, style),
                                              force=getattr(args, "force", False), style=style)
-        elif style == "photo":
-            from make_tietu_images import render_photo_cards
-            image_paths = render_photo_cards(post, os.path.join(out_dir, "photo"))
         else:
             image_paths = render_cards(post, out_dir)
         print(f"  已出图 {len(image_paths)} 张 → {os.path.relpath(out_dir, ROOT)}")
@@ -362,9 +375,7 @@ def cmd_publish(args) -> int:
     不带 --yes 只列出会发什么，不连微信。
     """
     state = load_state()
-    # 只有 drafted 才能发；published / gone / publish_failed 别再碰
-    targets = {s: r for s, r in state.items()
-               if r.get("media_id") and r.get("status") == "drafted"}
+    targets = {s: r for s, r in state.items() if r.get("media_id")}
     if args.slug:
         targets = {s: r for s, r in targets.items() if args.slug in s}
     if not targets:
@@ -447,9 +458,6 @@ def cmd_list(args) -> int:
         return 0
 
     drafts = p.list_drafts(offset=0, count=args.count)
-    if not p.get_access_token():
-        print("拿不到 token（网络/IP 白名单），拉不到草稿箱，先别据此回填状态")
-        return 1
     state = load_state()
     remote_ids = {mid for _, mid in drafts}
     print(f"线上草稿箱 {len(drafts)} 条：")
@@ -505,7 +513,7 @@ def main() -> None:
     ap.add_argument("--no-comment", action="store_true", help="关闭留言")
     ap.add_argument("--allow-many", action="store_true",
                     help="允许超过 3 张卡（跳过 SOP 手册校验，渲染仍只取前 3 张）")
-    ap.add_argument("--style", choices=["text", "anime", "comic", "photo"], default="text",
+    ap.add_argument("--style", choices=["text", "anime", "comic"], default="text",
                     help="text=纯文字卡（默认）；anime=Agnes 日系插画底图+叠字；comic=简笔画搞笑底图+白底黑字")
     ap.add_argument("--force", action="store_true", help="anime 风格下忽略底图缓存重生成")
     ap.add_argument("--count", type=int, default=20, help="list 拉取条数")
