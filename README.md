@@ -40,6 +40,8 @@ PY="C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe"
 "$PY" scripts/tietu_queue.py list --published        # 看线上已发布列表
 "$PY" scripts/daily_pair.py --dry-run             # 一轮：贴图+图文只出图/自检
 "$PY" scripts/daily_pair.py                       # 一轮：建贴图草稿 + 图文草稿
+"$PY" scripts/gen_topics.py --dry-run           # 生成新选题只看不写（池子 < 4 条时才调接口）
+"$PY" scripts/gen_topics.py                   # 真写 posts/，至少留 4 条未用素材
 ```
 
 单条出图：`"$PY" scripts/publish_tietu.py posts/xxx.json --images-only`
