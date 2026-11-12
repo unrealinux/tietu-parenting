@@ -72,13 +72,37 @@ STORY_SCHEMA = """只输出 JSON，不要 markdown 代码块、不要解释：
 }"""
 
 
+DEFAULT_MODEL = "deepseek-flash"   # 实测比 agnes-2.5-flash 写得好，约 10-13 秒/条
+PI_AUTH = os.path.join(os.path.expanduser("~"), ".pi", "agent", "auth.json")
+
+
+def _deepseek_key() -> str:
+    """DEEPSEEK_API_KEY 优先，没有就用本机 pi 已登录的凭证（不复制密钥进 .env）。"""
+    key = os.environ.get("DEEPSEEK_API_KEY", "")
+    if key:
+        return key
+    try:
+        with open(PI_AUTH, encoding="utf-8") as f:
+            return json.load(f).get("deepseek", {}).get("key", "")
+    except (OSError, ValueError):
+        return ""
+
+
 def _chat(system: str, user: str) -> str:
-    base = os.environ.get("AGNES_API_URL", "").split("/images/")[0] or "https://api.agnes-ai.cn/v1"
-    key = os.environ.get("AGNES_API_KEY", "")
+    # TEXT_* 环境变量可整体换供应方；不设时 deepseek 走官方端点，其余走 Agnes
+    model = os.environ.get("TEXT_MODEL") or os.environ.get("AGNES_TEXT_MODEL") or DEFAULT_MODEL
+    if model.startswith("deepseek"):
+        base = os.environ.get("TEXT_BASE_URL") or "https://api.deepseek.com/v1"
+        key = os.environ.get("TEXT_API_KEY") or _deepseek_key()
+    else:
+        base = (os.environ.get("TEXT_BASE_URL") or
+                os.environ.get("AGNES_API_URL", "").split("/images/")[0] or
+                "https://api.agnes-ai.cn/v1")
+        key = os.environ.get("TEXT_API_KEY") or os.environ.get("AGNES_API_KEY", "")
     if not key:
-        raise RuntimeError("缺 AGNES_API_KEY，先填进项目 .env")
+        raise RuntimeError(f"缺 {model} 的 key：TEXT_API_KEY / DEEPSEEK_API_KEY / AGNES_API_KEY 都没拿到")
     body = json.dumps({
-        "model": os.environ.get("AGNES_TEXT_MODEL", "agnes-2.5-flash"),
+        "model": model,
         "temperature": 0.9,
         "max_tokens": 2048,
         "messages": [
