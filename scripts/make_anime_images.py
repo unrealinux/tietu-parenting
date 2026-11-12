@@ -131,7 +131,8 @@ def _generate_base(prompt: str, out_png: str, force: bool = False, ar: str | Non
     proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
                           errors="replace")
     if proc.returncode != 0 or not os.path.exists(out_png):
-        tail = (proc.stderr or proc.stdout or "")[-600:]
+        # 两个流的尾巴都给出来：agnes 的报错有时在 stdout，只看 stderr 会只剩一行“Using agnes”
+        tail = ((proc.stderr or "") + (proc.stdout or ""))[-1200:]
         raise RuntimeError(f"生成失败：{tail}")
     return out_png
 
