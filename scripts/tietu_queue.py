@@ -56,7 +56,7 @@ IMAGE_MIN, IMAGE_MAX = 1, 3   # SOP 手册硬规则
 
 # 对比卡单行字数上限（a 侧主句 / b 侧副句）——超过就折行，末行短了还留孤字
 # comic：主句限 1 行，副句小字按 16 字折行；anime/text：两侧都是主句字号，都限 12
-PAIR_LIMITS = {"comic": (12, 16), "anime": (12, 12), "text": (12, 12)}
+PAIR_LIMITS = {"comic": (12, 16), "anime": (12, 12), "text": (12, 12), "photo": (12, 12)}
 
 
 # ---------- 状态文件 ----------
@@ -146,7 +146,8 @@ def validate(post: dict, allow_many: bool = False, style: str = "text") -> tuple
 # ---------- 主流程 ----------
 
 def discover(slug: str | None = None) -> list[str]:
-    files = sorted(glob.glob(os.path.join(POSTS_DIR, "tietu_*.json")))
+    # 新的编号优先（031 → 004），积压的老贴图排到新内容之后
+    files = sorted(glob.glob(os.path.join(POSTS_DIR, "tietu_*.json")), reverse=True)
     if slug:
         files = [f for f in files if slug in os.path.basename(f)]
     return files
@@ -203,6 +204,9 @@ def cmd_run(args) -> int:
             from make_anime_images import render_anime_cards
             image_paths = render_anime_cards(post, os.path.join(out_dir, style),
                                              force=getattr(args, "force", False), style=style)
+        elif style == "photo":
+            from make_tietu_images import render_photo_cards
+            image_paths = render_photo_cards(post, os.path.join(out_dir, "photo"))
         else:
             image_paths = render_cards(post, out_dir)
         print(f"  已出图 {len(image_paths)} 张 → {os.path.relpath(out_dir, ROOT)}")

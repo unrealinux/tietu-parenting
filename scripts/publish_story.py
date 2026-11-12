@@ -190,6 +190,13 @@ def main() -> None:
             sys.exit(1)
         urls.append(url)
 
+    # draft/add 不幂等：重跑一次就多一条同标题草稿，先查草稿箱（本地状态丢了也能兜住）
+    if not args.force:
+        existing = p.find_draft_by_title(story["title"])
+        if existing:
+            print(f"[跳过] 草稿箱已有同标题草稿 media_id={existing}（要重建先删掉那条）")
+            return
+
     media_id = p.create_draft(
         title=story["title"],
         content=_build_html(story, urls),
