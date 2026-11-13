@@ -517,8 +517,9 @@ def main() -> None:
     ap.add_argument("--no-comment", action="store_true", help="关闭留言")
     ap.add_argument("--allow-many", action="store_true",
                     help="允许超过 3 张卡（跳过 SOP 手册校验，渲染仍只取前 3 张）")
-    ap.add_argument("--style", choices=["text", "anime", "comic"], default="text",
-                    help="text=纯文字卡（默认）；anime=Agnes 日系插画底图+叠字；comic=简笔画搞笑底图+白底黑字")
+    ap.add_argument("--style", choices=["text", "anime", "comic"], default="comic",
+                    help="comic=简笔画搞笑底图+白底黑字（默认，和 daily_pair 一致）；"
+                         "anime=Agnes 日系插画底图+叠字；text=纯文字卡（不用 Agnes，无底图）")
     ap.add_argument("--force", action="store_true", help="anime 风格下忽略底图缓存重生成")
     ap.add_argument("--count", type=int, default=20, help="list 拉取条数")
     ap.add_argument("--limit", type=int, default=0,

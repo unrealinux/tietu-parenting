@@ -49,7 +49,7 @@ PY="C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe"
 
 ## 三种图风
 
-| | `--style text`（默认） | `--style anime` | `--style comic`（搞笑） |
+| | `--style text` | `--style anime` | `--style comic`（默认，搞笑） |
 |---|---|---|---|
 | 底图 | 无，米白纸色 | Agnes 日系动漫插画 | Agnes 极简搞笑贴纸（纯白底） |
 | 文字 | 楷体居中 | 雅黑粗体 + 描边，压底部渐隐 | 黑字压底部留白区，主句大、副句小，不画渐隐 |
@@ -64,6 +64,13 @@ PY="C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe"
 "$PY" scripts/tietu_queue.py --slug xxx --style comic --commit    # 出图 + 建草稿
 "$PY" scripts/make_anime_images.py posts/tietu_012_xxx.json --style comic --force  # 单条重生成
 ```
+
+出图模型两选一，靠 `.env` 的 `IMAGE_PROVIDER` 切换：
+
+| `IMAGE_PROVIDER` | 模型 | 需要的 key |
+|---|---|---|
+| 不填（默认） | `agnes-image-2.5-flash` | `AGNES_API_KEY` |
+| `seedream` | `doubao-seedream-4-0-250828`（火山引擎 Ark） | `SEEDREAM_API_KEY` |
 
 `comic` 和 `output/story/` 的漫画故事**共用同一份画风描述**（`make_anime_images.COMIC_STYLE`），
 改画风只改那一处，两个流程一起生效。
@@ -139,7 +146,7 @@ Windows 计划任务 `tietu-daily`（每天 8:30）跑 `scripts/daily_drafts.cmd
 `scripts/daily_pair.py` 一轮做两件事：建 1 篇贴图草稿 + 1 篇图文草稿，**不发布**。
 贴图去 `output/tietu/_queue.json` 查重，文章去 `output/story/_queue.json` 查重；
 两篇各自独立，一篇失败不影响另一篇。文章缺图时会先调用 `make_comic_story.py` 生成，
-所以文章侧仍需要 `bun` + `AGNES_API_KEY`；贴图侧没有 Agnes 时用 `--style text`。
+所以文章侧仍需要 `bun` + `AGNES_API_KEY`；贴图侧没有 Agnes 时显式加 `--style text`（默认是 comic，会调 Agnes）。
 
 ```bash
 "$PY" scripts/daily_pair.py --style text --dry-run   # 本机没有 Agnes 时先这样看

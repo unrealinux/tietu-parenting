@@ -110,18 +110,72 @@ def _has_bun() -> bool:
     return _bun_cmd() is not None
 
 
+def _size_for(ar: str) -> str:
+    """比例 → Seedream 接受的宽高（长边 2304，对齐到 16 的倍数）。"""
+    try:
+        w, h = (int(x) for x in ar.split(":"))
+    except ValueError:
+        return "2048x2048"
+    long_side = 2304
+    if w >= h:
+        return f"{long_side}x{max(16, round(long_side * h / w / 16) * 16)}"
+    return f"{max(16, round(long_side * w / h / 16) * 16)}x{long_side}"
+
+
+def _seedream_base(prompt: str, out_png: str, ar: str) -> str:
+    """Seedream（火山引擎 Ark）出图。IMAGE_PROVIDER=seedream 时走这条。"""
+    import base64
+    import urllib.request
+
+    key = os.environ.get("SEEDREAM_API_KEY") or os.environ.get("ARK_API_KEY", "")
+    if not key:
+        raise RuntimeError("IMAGE_PROVIDER=seedream 但缺 SEEDREAM_API_KEY / ARK_API_KEY，先填进项目 .env")
+    base = (os.environ.get("SEEDREAM_BASE_URL") or os.environ.get("ARK_BASE_URL")
+            or "https://ark.cn-beijing.volces.com/api/v3").rstrip("/")
+    model = (os.environ.get("SEEDREAM_MODEL") or os.environ.get("ARK_IMAGE_MODEL")
+             or "doubao-seedream-4-0-250828")
+    body = json.dumps({
+        "model": model,
+        "prompt": prompt,
+        "size": _size_for(ar),
+        "response_format": "url",
+        "watermark": False,
+    }).encode()
+    req = urllib.request.Request(
+        f"{base}/images/generations", data=body,
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=120) as r:
+        data = json.load(r)
+    item = (data.get("data") or [{}])[0]
+    if item.get("b64_json"):
+        raw = base64.b64decode(item["b64_json"])
+    elif item.get("url"):
+        with urllib.request.urlopen(item["url"], timeout=120) as img:
+            raw = img.read()
+    else:
+        raise RuntimeError(f"Seedream 没返回图片：{json.dumps(data, ensure_ascii=False)[:400]}")
+    os.makedirs(os.path.dirname(out_png), exist_ok=True)
+    with open(out_png, "wb") as f:
+        f.write(raw)
+    return out_png
+
+
 def _generate_base(prompt: str, out_png: str, force: bool = False, ar: str | None = None) -> str:
-    """调 baoyu-image-gen 生成底图，已存在则直接用缓存。"""
+    """出底图：默认调 baoyu-image-gen（Agnes），IMAGE_PROVIDER=seedream 时直连 Ark。已存在直接用缓存。"""
     if os.path.exists(out_png) and not force:
         print(f"  [缓存] {os.path.basename(out_png)}")
         return out_png
+
+    _load_env()
+    if os.environ.get("IMAGE_PROVIDER", "agnes").lower() == "seedream":
+        print(f"  底图来源：Seedream（{_size_for(ar or AR)}）…")
+        return _seedream_base(prompt, out_png, ar or AR)
 
     bun = _bun_cmd()
     if not bun:
         raise RuntimeError("找不到 bun，装一个：npm i -g bun（或 https://bun.sh）")
     if not os.path.exists(BAOYU_SCRIPT):
         raise RuntimeError(f"找不到 baoyu-image-gen 脚本：{BAOYU_SCRIPT}")
-    _load_env()
     if not os.environ.get("AGNES_API_KEY"):
         raise RuntimeError("缺 AGNES_API_KEY，先填进项目 .env")
 
