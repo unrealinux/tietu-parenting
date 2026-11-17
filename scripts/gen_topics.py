@@ -21,6 +21,7 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
+sys.path.insert(0, ROOT)   # publisher 里写的是 from src.config import …
 
 from make_anime_images import _load_env  # noqa: E402
 
@@ -104,7 +105,8 @@ def _chat(system: str, user: str) -> str:
     body = json.dumps({
         "model": model,
         "temperature": 0.9,
-        "max_tokens": 2048,
+        "max_tokens": 4096,
+        "response_format": {"type": "json_object"},   # 不加这个，模型偶尔漏逗号，整条作废
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
@@ -184,9 +186,26 @@ def _posts(kind: str) -> list[dict]:
     return out
 
 
-def _unused(kind: str) -> int:
+def _online_titles() -> set[str]:
+    """线上草稿箱 + 已发布标题。本地状态丢过，只信本地会把池子算多，导致永远不补新素材。"""
+    try:
+        sys.path.insert(0, os.path.join(ROOT, "src"))
+        from publisher import WeChatPublisher  # noqa: E402
+        p = WeChatPublisher()
+        titles: set[str] = set()
+        for off in range(0, 140, 20):
+            titles |= {(t or "").strip() for t, _ in p.list_drafts(off, 20)}
+            titles |= {(t or "").strip() for t, *_ in p.list_published(off, 20)}
+        return titles
+    except Exception as e:
+        print(f"[提示] 拉线上标题失败（{e}），池子只按本地记录算")
+        return set()
+
+
+def _unused(kind: str, online: set[str]) -> int:
     state = _load(TIETU_STATE if kind == "tietu" else STORY_STATE)
-    return sum(1 for p in _posts(kind) if p.get("slug") not in state)
+    return sum(1 for p in _posts(kind)
+               if p.get("slug") not in state and p.get("title", "").strip() not in online)
 
 
 def _next_path(kind: str, slug: str) -> str:
@@ -239,9 +258,10 @@ def main() -> int:
 
     kinds = ["tietu", "story"] if args.kind == "both" else [args.kind]
     taken = {p["slug"] for k in ("tietu", "story") for p in _posts(k)}
+    online = _online_titles()
     bad = 0
     for kind in kinds:
-        left = _unused(kind)
+        left = _unused(kind, online)
         if left >= args.min_pool and not args.force:
             print(f"[跳过] {kind} 池子还剩 {left} 条（>= {args.min_pool}），不用生成")
             continue
